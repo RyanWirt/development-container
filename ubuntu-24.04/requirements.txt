@@ -1,5 +1,6 @@
 openai==3.26.1
 openai-agents==0.23.1
+transformers==5.19.0
 numpy==2.5.3
 pandas==3.0.6
 scipy==1.18.1

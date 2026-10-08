@@ -5,13 +5,16 @@ AI development, built and published automatically via GitHub Actions.
 The image includes Python 3.12 with a ready-to-use virtual environment:
 
 - OpenAI's Python SDK and Agents SDK for agentic applications.
+- CPU PyTorch and Hugging Face Transformers for deep learning and language models.
 - NumPy, pandas, SciPy, scikit-learn, and Matplotlib for data analysis and CPU ML.
 - JupyterLab and ipykernel for notebooks.
 - pytest and Ruff for Python testing and linting.
 - Git, C/C++ build tools, Python headers, Ubuntu's Node.js/npm, and CLI utilities.
 
 Direct Python dependency versions are pinned in
-[`ubuntu-24.04/requirements.txt`](ubuntu-24.04/requirements.txt).
+[`ubuntu-24.04/requirements.txt`](ubuntu-24.04/requirements.txt), with PyTorch
+pinned in the Dockerfile and installed separately from its official CPU wheel
+index. This avoids bundling CUDA runtime dependencies.
 It runs as the non-root `vscode` user with passwordless sudo for development.
 This is a development environment, not a hardened production image.
 
@@ -177,9 +180,25 @@ jupyter lab --ip=0.0.0.0 --port=8888 --no-browser
 Open the token-bearing URL from Jupyter's output using the forwarded port.
 Keep token authentication enabled and the forwarded port private.
 
-This base image supports CPU development. PyTorch, TensorFlow, CUDA, model
-weights, and datasets are not bundled: add the framework/version your project
-needs to its dependencies. GPU workloads require a compatible CUDA image,
+This base image includes CPU PyTorch and Transformers for training and inference.
+For example, a small randomly initialized transformer can run entirely offline:
+
+```python
+import torch
+from transformers import GPT2Config, GPT2LMHeadModel
+
+config = GPT2Config(vocab_size=100, n_positions=32, n_embd=32, n_layer=1, n_head=2)
+model = GPT2LMHeadModel(config)
+tokens = torch.randint(0, config.vocab_size, (1, 8))
+loss = model(input_ids=tokens, labels=tokens).loss
+loss.backward()
+print(loss.item())
+```
+
+Pretrained model weights and datasets are not bundled. Loading them with
+`from_pretrained` downloads them at runtime and may require network access,
+Hugging Face authentication, sufficient storage, and acceptance of model licenses.
+TensorFlow and CUDA are not bundled. GPU workloads require a compatible CUDA image,
 host NVIDIA drivers, NVIDIA Container Toolkit, and GPU device access; installing
 a Python framework alone does not enable GPU support.
 
@@ -190,7 +209,7 @@ From the repository root:
 ```sh
 docker build -t python-ai-ubuntu-24.04:local -f ubuntu-24.04/Dockerfile ubuntu-24.04
 docker run --rm python-ai-ubuntu-24.04:local python -c \
-  'import openai, agents, numpy, pandas, scipy, sklearn; print("Python AI environment ready")'
+  'import openai, agents, torch, transformers, numpy, pandas, scipy, sklearn; print("Python AI environment ready")'
 ```
 
 You can use `"image": "python-ai-ubuntu-24.04:local"` in your devcontainer

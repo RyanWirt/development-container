@@ -45,6 +45,8 @@ ENV LANG=en_US.UTF-8 \
 USER ${USERNAME}
 COPY requirements.txt /tmp/python-ai-requirements.txt
 RUN python3 -m venv "${VIRTUAL_ENV}" \
+    && python -m pip install --no-cache-dir \
+        --index-url https://download.pytorch.org/whl/cpu "torch==2.14.1+cpu" \
     && python -m pip install --no-cache-dir -r /tmp/python-ai-requirements.txt \
     && python -m pip check
 
