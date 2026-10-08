@@ -108,7 +108,7 @@ In the project you want to develop, create `.devcontainer/devcontainer.json`:
         "charliermarsh.ruff"
       ],
       "settings": {
-        "python.defaultInterpreterPath": "/opt/venv/bin/python"
+        "python.defaultInterpreterPath": "/home/vscode/.venv/bin/python"
       }
     }
   }
@@ -122,8 +122,9 @@ For reproducible environments, use a release tag such as `:1.2.3`, a
 `ghcr.io/ryanwirt/python-ai-ubuntu-24.04@sha256:<digest>`.
 The workflow build summary includes the published digest.
 
-The image sets `PATH` and `VIRTUAL_ENV` to `/opt/venv`, which is writable by
-`vscode`. `python` and `pip` use this environment without manual activation:
+The image sets `PATH` and `VIRTUAL_ENV` to `/home/vscode/.venv`, which is writable
+by `vscode`, including after Dev Containers matches its UID to a Linux host user.
+`python` and `pip` use this environment without manual activation:
 
 ```sh
 python -m pip install -r requirements.txt
@@ -167,7 +168,7 @@ an account with billing/access to the selected model.
 
 ### Notebooks and deep learning
 
-Use VS Code's Jupyter extension with `/opt/venv/bin/python`, or run:
+Use VS Code's Jupyter extension with `/home/vscode/.venv/bin/python`, or run:
 
 ```sh
 jupyter lab --ip=0.0.0.0 --port=8888 --no-browser

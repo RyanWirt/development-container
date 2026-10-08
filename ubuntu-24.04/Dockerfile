@@ -33,20 +33,19 @@ RUN apt-get update \
     && groupadd --gid "${USER_GID}" "${USERNAME}" \
     && useradd --uid "${USER_UID}" --gid "${USER_GID}" --create-home --shell /bin/bash "${USERNAME}" \
     && echo "${USERNAME} ALL=(ALL) NOPASSWD:ALL" > "/etc/sudoers.d/${USERNAME}" \
-    && chmod 0440 "/etc/sudoers.d/${USERNAME}" \
-    && python3 -m venv /opt/venv \
-    && chown -R "${USER_UID}:${USER_GID}" /opt/venv
+    && chmod 0440 "/etc/sudoers.d/${USERNAME}"
 
 ENV LANG=en_US.UTF-8 \
     LC_ALL=en_US.UTF-8 \
-    VIRTUAL_ENV=/opt/venv \
-    PATH="/opt/venv/bin:${PATH}" \
+    VIRTUAL_ENV=/home/${USERNAME}/.venv \
+    PATH="/home/${USERNAME}/.venv/bin:${PATH}" \
     PYTHONUNBUFFERED=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=1
 
 USER ${USERNAME}
 COPY requirements.txt /tmp/python-ai-requirements.txt
-RUN python -m pip install --no-cache-dir -r /tmp/python-ai-requirements.txt \
+RUN python3 -m venv "${VIRTUAL_ENV}" \
+    && python -m pip install --no-cache-dir -r /tmp/python-ai-requirements.txt \
     && python -m pip check
 
 WORKDIR /workspaces
