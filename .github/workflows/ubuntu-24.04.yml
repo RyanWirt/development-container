@@ -1,0 +1,30 @@
+name: Ubuntu 24.04 Python AI development image
+
+on:
+  pull_request:
+    paths:
+      - ubuntu-24.04/**
+      - .github/workflows/ubuntu-24.04.yml
+      - .github/workflows/reusable-build-push.yml
+  push:
+    branches: [main]
+    tags: [python-ai-ubuntu-24.04-v*]
+    paths:
+      - ubuntu-24.04/**
+      - .github/workflows/ubuntu-24.04.yml
+      - .github/workflows/reusable-build-push.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  ubuntu-24-04:
+    uses: ./.github/workflows/reusable-build-push.yml
+    with:
+      image-name: python-ai-ubuntu-24.04
+      dockerfile: ubuntu-24.04/Dockerfile
+      context: ubuntu-24.04
+      tag-prefix: python-ai-ubuntu-24.04-v
+      keep-n-versions: 10

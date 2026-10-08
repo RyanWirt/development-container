@@ -1,0 +1,112 @@
+name: Build and publish development image
+
+on:
+  workflow_call:
+    inputs:
+      image-name:
+        required: true
+        type: string
+      dockerfile:
+        required: true
+        type: string
+      context:
+        required: true
+        type: string
+      tag-prefix:
+        required: true
+        type: string
+      keep-n-versions:
+        default: 10
+        type: number
+
+permissions:
+  contents: read
+
+concurrency:
+  group: image-${{ inputs.image-name }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      published: ${{ steps.publish.outputs.enabled }}
+    steps:
+      - uses: actions/checkout@v4.2.2
+      - name: Determine registry image and publishing policy
+        id: publish
+        env:
+          OWNER: ${{ github.repository_owner }}
+          IMAGE_NAME: ${{ inputs.image-name }}
+          TAG_PREFIX: ${{ inputs.tag-prefix }}
+        run: |
+          echo "image=ghcr.io/${OWNER,,}/${IMAGE_NAME}" >> "$GITHUB_OUTPUT"
+          enabled=false
+          if [[ "$GITHUB_EVENT_NAME" != "pull_request" ]] && \
+             [[ "$GITHUB_REF" == "refs/heads/main" || "$GITHUB_REF" == "refs/tags/${TAG_PREFIX}"* ]]; then
+            enabled=true
+          fi
+          echo "enabled=$enabled" >> "$GITHUB_OUTPUT"
+      - uses: docker/setup-buildx-action@v3.11.1
+      - name: Log in to GHCR
+        if: steps.publish.outputs.enabled == 'true'
+        uses: docker/login-action@v3.5.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Image metadata
+        id: meta
+        uses: docker/metadata-action@v5.8.0
+        with:
+          images: ${{ steps.publish.outputs.image }}
+          flavor: latest=false
+          tags: |
+            type=raw,value=main,enable=${{ github.ref == 'refs/heads/main' }}
+            type=match,pattern=${{ inputs.tag-prefix }}(.*),group=1
+            type=raw,value=latest,enable=${{ startsWith(github.ref, 'refs/tags/') }}
+            type=sha
+      - name: Build and optionally push
+        uses: docker/build-push-action@v6.18.0
+        with:
+          context: ${{ inputs.context }}
+          file: ${{ inputs.dockerfile }}
+          push: ${{ steps.publish.outputs.enabled == 'true' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+
+  cleanup:
+    needs: build
+    if: needs.build.outputs.published == 'true' && inputs.keep-n-versions > 0
+    runs-on: ubuntu-latest
+    permissions:
+      packages: write
+      contents: read
+    steps:
+      - name: Remove old SHA-only package versions
+        uses: actions/github-script@v7.0.1
+        env:
+          PACKAGE_NAME: ${{ inputs.image-name }}
+          KEEP_N_VERSIONS: ${{ inputs.keep-n-versions }}
+        with:
+          script: |
+            const keep = Number(process.env.KEEP_N_VERSIONS);
+            if (!Number.isInteger(keep) || keep < 1) {
+              throw new Error('keep-n-versions must be a non-negative integer');
+            }
+            const { data: repository } = await github.rest.repos.get(context.repo);
+            const owner = context.repo.owner;
+            const scope = repository.owner.type === 'Organization' ? 'orgs' : 'users';
+            const path = `/${scope}/${owner}/packages/container/${encodeURIComponent(process.env.PACKAGE_NAME)}/versions`;
+            const versions = await github.paginate(`GET ${path}`, { per_page: 100 });
+            versions.sort((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at));
+            for (const version of versions.slice(keep)) {
+              const tags = version.metadata?.container?.tags ?? [];
+              if (tags.length > 0 && tags.every(tag => /^sha-[0-9a-f]+$/.test(tag))) {
+                await github.request(`DELETE ${path}/{version_id}`, { version_id: version.id });
+                core.info(`Deleted old SHA-only version ${version.id}`);
+              }
+            }
