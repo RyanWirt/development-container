@@ -1,8 +1,17 @@
-# docsearch-devcontainer-image
+# Python AI development container
 
-Pre-built Ubuntu images for general development, built and published automatically
-via GitHub Actions. The image includes Git, C/C++ build tools, Python with pip and
-venv, Ubuntu's Node.js and npm packages, SSH client tools, and common CLI utilities.
+Pre-built Ubuntu images for general Python, OpenAI agent, machine learning, and
+AI development, built and published automatically via GitHub Actions.
+The image includes Python 3.12 with a ready-to-use virtual environment:
+
+- OpenAI's Python SDK and Agents SDK for agentic applications.
+- NumPy, pandas, SciPy, scikit-learn, and Matplotlib for data analysis and CPU ML.
+- JupyterLab and ipykernel for notebooks.
+- pytest and Ruff for Python testing and linting.
+- Git, C/C++ build tools, Python headers, Ubuntu's Node.js/npm, and CLI utilities.
+
+Direct Python dependency versions are pinned in
+[`ubuntu-24.04/requirements.txt`](ubuntu-24.04/requirements.txt).
 It runs as the non-root `vscode` user with passwordless sudo for development.
 This is a development environment, not a hardened production image.
 
@@ -10,14 +19,15 @@ This is a development environment, not a hardened production image.
 
 | Image | Source | Registry |
 |-------|--------|----------|
-| Ubuntu 24.04 devcontainer base | [`ubuntu-24.04/Dockerfile`](ubuntu-24.04/Dockerfile) | `ghcr.io/ryanwirt/docsearch-ubuntu-24.04` |
+| Ubuntu 24.04 Python AI base | [`ubuntu-24.04/Dockerfile`](ubuntu-24.04/Dockerfile) | `ghcr.io/ryanwirt/python-ai-ubuntu-24.04` |
 
 ## Repository structure
 
 ```text
 .
 ├── ubuntu-24.04/
-│   └── Dockerfile
+│   ├── Dockerfile
+│   └── requirements.txt
 └── .github/
     └── workflows/
         ├── reusable-build-push.yml
@@ -38,7 +48,7 @@ to be committed.
 |-------|:-----------------:|------|
 | Pull request | No | Build-only validation; image discarded |
 | Push to `main` | Yes | `main`, `sha-<short-sha>` |
-| Push of `docsearch-ubuntu-24.04-v1.2.3` | Yes | `1.2.3`, `latest`, `sha-<short-sha>` |
+| Push of `python-ai-ubuntu-24.04-v1.2.3` | Yes | `1.2.3`, `latest`, `sha-<short-sha>` |
 
 The Ubuntu workflow runs when `ubuntu-24.04/**`, its caller workflow, or the
 reusable workflow changes. Matching tag pushes run regardless of changed paths.
@@ -61,8 +71,8 @@ Images currently target Linux AMD64.
 4. To publish a release, create and push a version tag from the desired commit:
 
    ```sh
-   git tag docsearch-ubuntu-24.04-v1.2.3
-   git push origin docsearch-ubuntu-24.04-v1.2.3
+   git tag python-ai-ubuntu-24.04-v1.2.3
+   git push origin python-ai-ubuntu-24.04-v1.2.3
    ```
 
 For a fork or organization, replace `ryanwirt` in image references with the
@@ -83,9 +93,25 @@ In the project you want to develop, create `.devcontainer/devcontainer.json`:
 
 ```json
 {
-  "name": "Ubuntu 24.04 development",
-  "image": "ghcr.io/ryanwirt/docsearch-ubuntu-24.04:main",
-  "remoteUser": "vscode"
+  "name": "Python AI development",
+  "image": "ghcr.io/ryanwirt/python-ai-ubuntu-24.04:main",
+  "remoteUser": "vscode",
+  "containerEnv": {
+    "OPENAI_API_KEY": "${localEnv:OPENAI_API_KEY}"
+  },
+  "forwardPorts": [8888],
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "ms-python.python",
+        "ms-toolsai.jupyter",
+        "charliermarsh.ruff"
+      ],
+      "settings": {
+        "python.defaultInterpreterPath": "/opt/venv/bin/python"
+      }
+    }
+  }
 }
 ```
 
@@ -93,10 +119,20 @@ Commit that file to the project, install VS Code's Dev Containers extension,
 and choose **Dev Containers: Reopen in Container**. Docker must be running.
 For reproducible environments, use a release tag such as `:1.2.3`, a
 `:sha-<short-sha>` tag (subject to cleanup), or pin the image by digest:
-`ghcr.io/ryanwirt/docsearch-ubuntu-24.04@sha256:<digest>`.
+`ghcr.io/ryanwirt/python-ai-ubuntu-24.04@sha256:<digest>`.
 The workflow build summary includes the published digest.
 
-Inside the container, use a virtual environment for Python dependencies:
+The image sets `PATH` and `VIRTUAL_ENV` to `/opt/venv`, which is writable by
+`vscode`. `python` and `pip` use this environment without manual activation:
+
+```sh
+python -m pip install -r requirements.txt
+python -m pytest
+ruff check .
+```
+
+For projects needing independent dependency versions, create a project-local
+environment and select `.venv/bin/python` in VS Code:
 
 ```sh
 python3 -m venv .venv
@@ -104,20 +140,59 @@ python3 -m venv .venv
 pip install -r requirements.txt
 ```
 
-Ubuntu manages the system Python installation; do not install project packages
-into it. Install project-specific Node dependencies with `npm install`.
+This separate environment does not inherit the image's AI packages; install
+your project's dependencies into it. Ubuntu manages system Python; do not use
+`sudo pip` or `--break-system-packages`. Install Node dependencies with `npm install`.
+
+### OpenAI agents and credentials
+
+Set `OPENAI_API_KEY` in the host environment before opening VS Code so the
+devcontainer configuration can pass it through at runtime. Recreate the container
+after changing the host value. Never put credentials in the Dockerfile,
+requirements, Git, or image. Projects without OpenAI access can still use the
+offline ML and notebook tools.
+
+An agent application can use the preinstalled SDK:
+
+```python
+from agents import Agent, Runner
+
+agent = Agent(name="Assistant", instructions="Help with Python development.")
+result = Runner.run_sync(agent, "Explain Python virtual environments.")
+print(result.final_output)
+```
+
+This example calls the OpenAI API and requires an API key, network access, and
+an account with billing/access to the selected model.
+
+### Notebooks and deep learning
+
+Use VS Code's Jupyter extension with `/opt/venv/bin/python`, or run:
+
+```sh
+jupyter lab --ip=0.0.0.0 --port=8888 --no-browser
+```
+
+Open the token-bearing URL from Jupyter's output using the forwarded port.
+Keep token authentication enabled and the forwarded port private.
+
+This base image supports CPU development. PyTorch, TensorFlow, CUDA, model
+weights, and datasets are not bundled: add the framework/version your project
+needs to its dependencies. GPU workloads require a compatible CUDA image,
+host NVIDIA drivers, NVIDIA Container Toolkit, and GPU device access; installing
+a Python framework alone does not enable GPU support.
 
 ### Local build
 
 From the repository root:
 
 ```sh
-docker build -t docsearch-ubuntu-24.04:local -f ubuntu-24.04/Dockerfile ubuntu-24.04
-docker run --rm docsearch-ubuntu-24.04:local bash -lc \
-  'whoami && git --version && python3 --version && node --version && g++ --version'
+docker build -t python-ai-ubuntu-24.04:local -f ubuntu-24.04/Dockerfile ubuntu-24.04
+docker run --rm python-ai-ubuntu-24.04:local python -c \
+  'import openai, agents, numpy, pandas, scipy, sklearn; print("Python AI environment ready")'
 ```
 
-You can use `"image": "docsearch-ubuntu-24.04:local"` in your devcontainer
+You can use `"image": "python-ai-ubuntu-24.04:local"` in your devcontainer
 configuration before publishing.
 
 ## Add a new image
